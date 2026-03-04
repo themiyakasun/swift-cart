@@ -25,9 +25,10 @@ public class InventoryController {
     }
 
     @GetMapping("/{productId}/stock")
-    public ResponseEntity<ApiResponse<InventoryResponse>> checkStock(@PathVariable Long productId) {
-        // Logic to find stock by product ID
-        return ResponseEntity.ok(new ApiResponse<>("Stock retrieved", inventoryData));
+    public ResponseEntity<ApiResponse> checkStock(@PathVariable Long productId) {
+        // Call the service to get the real data!
+        InventoryResponse response = service.checkInventory(productId);
+        return ResponseEntity.ok(new ApiResponse("Stock retrieved", response));
     }
 
     @GetMapping("/{productId}")
