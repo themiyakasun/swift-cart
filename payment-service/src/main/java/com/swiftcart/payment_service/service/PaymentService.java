@@ -15,10 +15,13 @@ import com.swiftcart.payment_service.dtos.PaymentDto;
 import com.swiftcart.payment_service.exceptions.PaymentNotFoundException;
 
 @Service
-@RequiredArgsConstructor
 public class PaymentService {
 
     private final PaymentRepository paymentRepository;
+
+    public PaymentService(PaymentRepository paymentRepository) {
+        this.paymentRepository = paymentRepository;
+    }
 
     @Transactional
     public PaymentResponseDto createPaymentIntent(PaymentRequest request) throws StripeException {
@@ -39,18 +42,19 @@ public class PaymentService {
         PaymentIntent intent = PaymentIntent.create(params);
 
         // 2. Save the PENDING payment to our local database
-        Payment payment = Payment.builder()
-                .stripePaymentIntentId(intent.getId())
-                .orderId(request.getOrderId())
-                .amount(request.getAmount())
-                .currency(request.getCurrency())
-                .status(PaymentStatus.PENDING)
-                .build();
+        Payment payment = new Payment();
+        payment.setStripePaymentIntentId(intent.getId());
+        payment.setOrderId(request.getOrderId());
+        payment.setAmount(request.getAmount());
+        payment.setCurrency(request.getCurrency());
+        payment.setStatus(PaymentStatus.PENDING);
 
         paymentRepository.save(payment);
 
-        // 3. Return the secret to the frontend
-        return new PaymentResponseDto(intent.getClientSecret());
+        // 3. Return the secret using an empty constructor and setter
+        PaymentResponseDto response = new PaymentResponseDto();
+        response.setClientSecret(intent.getClientSecret());
+        return response;
     }
 
     public PaymentDto getPaymentByOrderId(String orderId) {
@@ -58,13 +62,14 @@ public class PaymentService {
                 .orElseThrow(() -> new PaymentNotFoundException("Payment not found for order ID: " + orderId));
 
         // Convert Entity to DTO using the Builder
-        return PaymentDto.builder()
-                .orderId(payment.getOrderId())
-                .stripePaymentIntentId(payment.getStripePaymentIntentId())
-                .amount(payment.getAmount())
-                .currency(payment.getCurrency())
-                .status(payment.getStatus())
-                .createdAt(payment.getCreatedAt())
-                .build();
+        PaymentDto dto = new PaymentDto();
+        dto.setOrderId(payment.getOrderId());
+        dto.setStripePaymentIntentId(payment.getStripePaymentIntentId());
+        dto.setAmount(payment.getAmount());
+        dto.setCurrency(payment.getCurrency());
+        dto.setStatus(payment.getStatus());
+        dto.setCreatedAt(payment.getCreatedAt());
+
+        return dto;
     }
 }

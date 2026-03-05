@@ -7,6 +7,9 @@ public class ApiResponse<T> {
     private String message; // holds a human-readable status message
     private T data; // hold anything
 
+    public ApiResponse() {
+    }
+
     public ApiResponse(String message, T data) {
         this.message = message;
         this.data = data;
