@@ -3,6 +3,7 @@ package com.swiftcart.order_service.service;
 import com.swiftcart.order_service.client.*;
 import com.swiftcart.order_service.dtos.OrderResponse;
 import com.swiftcart.order_service.dtos.PlaceOrderRequest;
+import com.swiftcart.order_service.dtos.UserResponse;
 import com.swiftcart.order_service.mapper.OrderMapper;
 import com.swiftcart.order_service.model.Order;
 import com.swiftcart.order_service.model.OrderItem;
@@ -22,14 +23,18 @@ public class OrderService {
     private final InventoryClient inventoryClient;
     private final PaymentClient paymentClient;
     private final ShippingClient shippingClient;
+    private final NotificationClient notificationClient;
+    private final UserClient userClient;
 
-    public OrderService(OrderRepository orderRepository, OrderMapper orderMapper, CartClient cartClient, InventoryClient inventoryClient, PaymentClient paymentClient, ShippingClient shippingClient) {
+    public OrderService(OrderRepository orderRepository, OrderMapper orderMapper, CartClient cartClient, InventoryClient inventoryClient, PaymentClient paymentClient, ShippingClient shippingClient, NotificationClient notificationClient, UserClient userClient) {
         this.orderRepository = orderRepository;
         this.orderMapper = orderMapper;
         this.cartClient = cartClient;
         this.inventoryClient = inventoryClient;
         this.paymentClient = paymentClient;
         this.shippingClient = shippingClient;
+        this.notificationClient = notificationClient;
+        this.userClient = userClient;
     }
 
     @Transactional
@@ -48,11 +53,9 @@ public class OrderService {
         order.setFullName(request.getFullName());
         order.setPhoneNumber(request.getPhoneNumber());
 
-        // Uses the helper method to format the nested JSON into a single string!
         order.setShippingAddress(request.getShippingAddress().getFormattedAddress());
         order.setTotalAmount(totalAmount);
 
-        // Use the Enum!
         order.setStatus(OrderStatus.PENDING);
 
         // Map Cart Items to Order Items & calculate prices
@@ -63,8 +66,7 @@ public class OrderService {
             orderItem.setQuantity(cartItem.getQuantity());
             orderItem.setUnitPrice(cartItem.getUnitPrice());
 
-            // Calculate item total: (quantity * unitPrice) - discount
-            BigDecimal itemDiscount = BigDecimal.ZERO; // Set to zero by default for now
+            BigDecimal itemDiscount = BigDecimal.ZERO;
             BigDecimal itemTotal = cartItem.getUnitPrice()
                     .multiply(BigDecimal.valueOf(cartItem.getQuantity()))
                     .subtract(itemDiscount);
@@ -82,18 +84,17 @@ public class OrderService {
         try {
             PaymentClientResponse paymentResponse = paymentClient.processPayment(paymentRequest);
             if (!"SUCCESS".equals(paymentResponse.getData().getPaymentStatus())) {
-                order.setStatus(OrderStatus.CANCELLED); // Enum!
+                order.setStatus(OrderStatus.CANCELLED);
                 orderRepository.save(order);
                 throw new RuntimeException("Payment failed!");
             }
         } catch (Exception e) {
-            order.setStatus(OrderStatus.CANCELLED); // Enum!
+            order.setStatus(OrderStatus.CANCELLED);
             orderRepository.save(order);
 
             System.out.println("PAYMENT FEIGN ERROR: " + e.getMessage());
             e.printStackTrace();
 
-            // Updates the Postman response to show the real error
             throw new RuntimeException("Payment Service error: " + e.getMessage());
         }
 
@@ -103,11 +104,12 @@ public class OrderService {
         }
 
         // Update Order to CONFIRMED & Clear Cart
-        order.setStatus(OrderStatus.CONFIRMED); // Enum!
+        order.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(order);
         cartClient.clearCart(request.getUserId());
 
         // Request Shipping for the confirmed order
+        String trackingNumber = "Pending Generation";
         try {
             ShippingRequest shippingRequest = new ShippingRequest(
                     order.getId(),
@@ -115,13 +117,33 @@ public class OrderService {
                     order.getShippingAddress()
             );
 
-            // Calls the shipping service to generate a tracking number
             ShippingClientResponse shippingResponse = shippingClient.createShipment(shippingRequest);
-            System.out.println("Shipment created successfully! Tracking: " + shippingResponse.getData().getTrackingNumber());
+            trackingNumber = shippingResponse.getData().getTrackingNumber();
+            System.out.println("Shipment created successfully! Tracking: " + trackingNumber);
 
         } catch (Exception e) {
-            // We catch this so the user still gets a success response for their payment
             System.out.println("SHIPPING FEIGN ERROR: Could not create shipment right now. Error: " + e.getMessage());
+        }
+
+        // Send Order Confirmation Notification
+        try {
+            // Get User Email
+            UserResponse user = userClient.getUserById(request.getUserId());
+
+            // Build Notification
+            NotificationRequest notification = new NotificationRequest();
+            notification.setRecipientEmail(user.getEmail());
+            notification.setSubject("SwiftCart: Order Confirmed!");
+            notification.setMessage("Hi " + user.getUsername() + ",\nYour order " + order.getId() + " is confirmed. Your total was $" + totalAmount + ".\nTracking: " + trackingNumber);
+            notification.setType(NotificationType.ORDER_CONFIRMATION);
+
+            // Send Notification
+            notificationClient.sendNotification(notification);
+            System.out.println("Order confirmation email requested for: " + user.getEmail());
+
+        } catch (Exception e) {
+            // Fails silently to prevent order rollback if notification goes down
+            System.out.println("NOTIFICATION FEIGN ERROR: Could not send email right now. Error: " + e.getMessage());
         }
 
         return orderMapper.toResponse(order);
