@@ -21,18 +21,20 @@ public class OrderService {
     private final CartClient cartClient;
     private final InventoryClient inventoryClient;
     private final PaymentClient paymentClient;
+    private final ShippingClient shippingClient;
 
-    public OrderService(OrderRepository orderRepository, OrderMapper orderMapper, CartClient cartClient, InventoryClient inventoryClient, PaymentClient paymentClient) {
+    public OrderService(OrderRepository orderRepository, OrderMapper orderMapper, CartClient cartClient, InventoryClient inventoryClient, PaymentClient paymentClient, ShippingClient shippingClient) {
         this.orderRepository = orderRepository;
         this.orderMapper = orderMapper;
         this.cartClient = cartClient;
         this.inventoryClient = inventoryClient;
         this.paymentClient = paymentClient;
+        this.shippingClient = shippingClient;
     }
 
     @Transactional
     public OrderResponse placeOrder(PlaceOrderRequest request) {
-        // 1. Fetch Cart
+        // Fetch Cart
         CartClientResponse cartResponse = cartClient.getCartByUserId(request.getUserId());
         if (cartResponse.getData() == null || cartResponse.getData().getItems().isEmpty()) {
             throw new RuntimeException("Cannot place order: Cart is empty!");
@@ -104,6 +106,23 @@ public class OrderService {
         order.setStatus(OrderStatus.CONFIRMED); // Enum!
         orderRepository.save(order);
         cartClient.clearCart(request.getUserId());
+
+        // Request Shipping for the confirmed order
+        try {
+            ShippingRequest shippingRequest = new ShippingRequest(
+                    order.getId(),
+                    request.getUserId(),
+                    order.getShippingAddress()
+            );
+
+            // Calls the shipping service to generate a tracking number
+            ShippingClientResponse shippingResponse = shippingClient.createShipment(shippingRequest);
+            System.out.println("Shipment created successfully! Tracking: " + shippingResponse.getData().getTrackingNumber());
+
+        } catch (Exception e) {
+            // We catch this so the user still gets a success response for their payment
+            System.out.println("SHIPPING FEIGN ERROR: Could not create shipment right now. Error: " + e.getMessage());
+        }
 
         return orderMapper.toResponse(order);
     }
