@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>com.swiftcart</groupId>
+	<artifactId>swiftcart-backend</artifactId>
+	<version>1.0.0</version>
+	<packaging>pom</packaging>
+
+	<name>SwiftCart Backend Monorepo</name>
+
+	<modules>
+		<module>service-registry</module>
+		<module>api-gateway</module>
+		<module>identity_service</module>
+		<module>product-service</module>
+		<module>cart-service</module>
+		<module>order-service</module>
+		<module>inventory-service</module>
+		<module>payment-service</module>
+		<module>shipping-service</module>
+		<module>notification-service</module>
+		<module>review-service</module>
+		<module>warranty-service</module>
+	</modules>
+
+</project>
